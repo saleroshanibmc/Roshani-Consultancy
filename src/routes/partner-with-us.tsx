@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { SiteLayout } from "@/components/layout/SiteLayout";
 import { PageHero } from "@/components/PageHero";
-import { submitEnquiry } from "@/lib/enquiry";
+import { enquiryErrorMessage, submitEnquiry } from "@/lib/enquiry";
 import { seoHead } from "@/lib/seo";
 
 export const Route = createFileRoute("/partner-with-us")({
@@ -156,14 +156,24 @@ function PartnerWithUs() {
 }
 
 function PartnerForm({ selectedProgram, setSelectedProgram }: { selectedProgram: string; setSelectedProgram: (value: string) => void }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [submitError, setSubmitError] = useState("");
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    if (status === "loading") return;
+    // React clears currentTarget after the synchronous event handler returns.
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setStatus("loading");
     try {
       await submitEnquiry({ name: String(form.get("name")), phone: String(form.get("mobile")), email: String(form.get("email")), organizationName: String(form.get("profession")), service: "Partner Application", message: `Program: ${form.get("program")}\nState: ${form.get("state")}\nCity: ${form.get("city")}\nProfession: ${form.get("profession")}`, program: String(form.get("program")), state: String(form.get("state")), city: String(form.get("city")), profession: String(form.get("profession")), source: "partner-with-us" });
-      event.currentTarget.reset();
-      alert("Your partnership application has been submitted.");
-    } catch { alert("We could not submit your application. Please try again."); }
+    } catch (error) {
+      setSubmitError(enquiryErrorMessage(error));
+      setStatus("error");
+      return;
+    }
+    formElement.reset();
+    setStatus("success");
   };
 
   return (
@@ -177,7 +187,7 @@ function PartnerForm({ selectedProgram, setSelectedProgram }: { selectedProgram:
         </div>
         <form onSubmit={submit} className="grid gap-4 rounded-3xl bg-white p-5 text-ink shadow-xl sm:grid-cols-2 sm:p-8">
           <Field label="Full Name"><input name="name" required autoComplete="name" className="field" /></Field>
-          <Field label="Mobile Number"><input name="mobile" required type="tel" inputMode="tel" pattern="(?:\+91[ -]?)?[6-9][0-9]{9}" autoComplete="tel" className="field" /></Field>
+          <Field label="Mobile Number"><input name="mobile" required type="tel" inputMode="tel" pattern="(?:\+91[ \-]?)?[6-9][0-9]{9}" autoComplete="tel" className="field" /></Field>
           <Field label="Email Address"><input name="email" required type="email" autoComplete="email" className="field" /></Field>
           <Field label="State"><input name="state" required autoComplete="address-level1" className="field" /></Field>
           <Field label="City"><input name="city" required autoComplete="address-level2" className="field" /></Field>
@@ -188,7 +198,12 @@ function PartnerForm({ selectedProgram, setSelectedProgram }: { selectedProgram:
           </Field>
           <div className="sm:col-span-2"><Field label="Profession / Business Type"><select name="profession" required defaultValue="" className="field"><option value="" disabled>Select your profession</option>{professionals.map((item) => <option key={item}>{item}</option>)}</select></Field></div>
           <label className="flex items-start gap-3 text-xs leading-relaxed text-muted-foreground sm:col-span-2"><input required type="checkbox" className="mt-0.5 h-4 w-4 accent-orange" /><span>I agree to be contacted by India Business Care regarding this partnership application.</span></label>
-          <div className="sm:col-span-2"><button type="submit" className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-orange px-6 py-3 text-sm font-bold text-white transition hover:brightness-110">Submit Partnership Application<ArrowRight className="h-4 w-4" /></button><p className="mt-3 text-center text-xs text-muted-foreground">Your details are sent securely to our partnership team.</p></div>
+          <div className="sm:col-span-2">
+            <button type="submit" disabled={status === "loading"} aria-busy={status === "loading"} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-orange px-6 py-3 text-sm font-bold text-white transition hover:brightness-110 disabled:cursor-wait disabled:opacity-70">{status === "loading" ? "Submitting…" : "Submit Partnership Application"}<ArrowRight className="h-4 w-4" /></button>
+            {status === "success" && <p role="status" className="mt-3 text-sm text-green-700">Your partnership application has been submitted. Our team will contact you to discuss the next steps.</p>}
+            {status === "error" && <p role="alert" className="mt-3 text-sm text-destructive">{submitError}</p>}
+            <p className="mt-3 text-center text-xs text-muted-foreground">Your details are sent securely to our partnership team.</p>
+          </div>
         </form>
       </div>
     </section>

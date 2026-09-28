@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { Building2, Check, Crown, Gift, MessageCircle, Star, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { submitEnquiry } from "@/lib/enquiry";
+import { enquiryErrorMessage, submitEnquiry } from "@/lib/enquiry";
 
-const plans = [
+const plans: readonly {
+  name: string; price: string; icon: typeof Building2; description: string;
+  features: readonly string[]; gifts?: readonly string[]; badge?: string;
+  featured?: boolean; premium?: boolean;
+}[] = [
   {
     name: "Starter Plan", price: "₹10,999/-*", icon: Building2,
     description: "For entrepreneurs who want to start a new company.",
@@ -39,15 +43,18 @@ export function CompanyRegistrationPlans() {
   const [form, setForm] = useState(emptyForm);
   const [opened, setOpened] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const update = (key: keyof FormState, value: string) => setForm((current) => ({ ...current, [key]: value }));
 
-  async function sendToWhatsApp(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitting) return;
+    setSubmitError("");
     setSubmitting(true);
     try {
       await submitEnquiry({ name: form.name, phone: form.phone, email: form.email, organizationName: form.companyName, service: "Company Registration", message: `Plan: ${selectedPlan}\nDirectors: ${form.directors}\nState: ${form.state}\nBusiness activity: ${form.activity}`, selectedPlan, directors: form.directors, state: form.state, businessActivity: form.activity, source: "company-registration-plans" });
       setOpened(true);
-    } catch { alert("We could not submit your inquiry. Please try again."); }
+    } catch (error) { setSubmitError(enquiryErrorMessage(error)); }
     finally { setSubmitting(false); }
   }
 
@@ -63,7 +70,7 @@ export function CompanyRegistrationPlans() {
               <h3 className="mt-5 text-xl font-bold text-navy-dark">{plan.name}</h3><p className="mt-3 text-3xl font-extrabold text-orange">{plan.price}</p><p className="mt-4 text-sm text-muted-foreground">{plan.description}</p>
               <ul className="mt-6 flex-1 space-y-3">{plan.features.map((item) => <li key={item} className="flex items-start gap-2 text-sm text-navy-dark"><Check className="mt-0.5 h-4 w-4 shrink-0 text-orange" />{item}</li>)}</ul>
               {"gifts" in plan && plan.gifts && <div className="mt-5 rounded-xl bg-orange-soft p-4"><p className="flex items-center gap-2 text-xs font-extrabold uppercase text-orange"><Gift className="h-4 w-4" />Free</p><ul className="mt-2 space-y-1 text-sm text-navy-dark">{plan.gifts.map((gift) => <li key={gift}>{gift}</li>)}</ul></div>}
-              <button type="button" onClick={() => { setSelectedPlan(plan.name); setOpened(false); }} className={`mt-7 min-h-12 rounded-full px-5 py-3 text-sm font-bold text-white transition ${plan.featured ? "bg-orange hover:brightness-110" : "bg-navy hover:bg-navy-dark"}`}>{plan.premium ? "Enquire Now" : "Select Plan"}</button>
+              <button type="button" onClick={() => { if (submitting) return; setSelectedPlan(plan.name); setOpened(false); setSubmitError(""); }} className={`mt-7 min-h-12 rounded-full px-5 py-3 text-sm font-bold text-white transition ${plan.featured ? "bg-orange hover:brightness-110" : "bg-navy hover:bg-navy-dark"}`}>{plan.premium ? "Enquire Now" : "Select Plan"}</button>
             </article>
           ); })}
         </div>
@@ -72,9 +79,9 @@ export function CompanyRegistrationPlans() {
         <p className="mt-6 rounded-xl border border-orange/20 bg-orange-soft p-4 text-sm leading-relaxed text-navy-dark"><strong>*Important:</strong> Government fees, stamp duty and statutory charges may vary based on the state, authorised capital and applicable registrations. Services are subject to eligibility, documents and approval by the respective authority.</p>
       </div>
 
-      <Dialog open={Boolean(selectedPlan)} onOpenChange={(open) => !open && setSelectedPlan("")}><DialogContent className="max-h-[92vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto"><DialogTitle className="text-2xl font-bold text-navy-dark">Company Registration Inquiry</DialogTitle><DialogDescription>Your selected plan is auto-filled. Complete the details to send your inquiry.</DialogDescription>
-        {opened ? <div className="py-12 text-center"><MessageCircle className="mx-auto h-14 w-14 rounded-full bg-emerald-100 p-3 text-emerald-600" /><h3 className="mt-4 text-xl font-bold text-navy-dark">Inquiry submitted</h3><p className="mt-2 text-sm text-muted-foreground">Thank you. Our team will contact you shortly.</p></div> :
-        <form onSubmit={sendToWhatsApp} className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Selected Plan"><input value={selectedPlan} readOnly className="field bg-muted" /></Field><Field label="Applicant Name"><input required value={form.name} onChange={(e) => update("name", e.target.value)} className="field" /></Field><Field label="Mobile Number"><input required type="tel" pattern="(?:\+91[ -]?)?[6-9][0-9]{9}" value={form.phone} onChange={(e) => update("phone", e.target.value)} className="field" /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)} className="field" /></Field><Field label="Proposed Company Name"><input required value={form.companyName} onChange={(e) => update("companyName", e.target.value)} className="field" /></Field><Field label="Number of Directors"><input required min="2" type="number" value={form.directors} onChange={(e) => update("directors", e.target.value)} className="field" /></Field><Field label="State"><input required value={form.state} onChange={(e) => update("state", e.target.value)} className="field" /></Field><Field label="Business Activity"><input required value={form.activity} onChange={(e) => update("activity", e.target.value)} className="field" /></Field><div className="sm:col-span-2"><button disabled={submitting} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-bold text-white transition hover:bg-navy-dark disabled:opacity-70"><MessageCircle className="h-5 w-5" />{submitting ? "Submitting..." : "Submit Inquiry"}</button></div></form>}
+      <Dialog open={Boolean(selectedPlan)} onOpenChange={(open) => !open && !submitting && setSelectedPlan("")}><DialogContent className="max-h-[92vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto"><DialogTitle className="text-2xl font-bold text-navy-dark">Company Registration Inquiry</DialogTitle><DialogDescription>Your selected plan is auto-filled. Complete the details to send your inquiry.</DialogDescription>
+        {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}{opened ? <div className="py-12 text-center"><MessageCircle className="mx-auto h-14 w-14 rounded-full bg-emerald-100 p-3 text-emerald-600" /><h3 className="mt-4 text-xl font-bold text-navy-dark">Inquiry submitted</h3><p className="mt-2 text-sm text-muted-foreground">Thank you. Our team will contact you shortly.</p></div> :
+        <form onSubmit={handleSubmit} className="mt-4 grid gap-4 sm:grid-cols-2"><Field label="Selected Plan"><input value={selectedPlan} readOnly className="field bg-muted" /></Field><Field label="Applicant Name"><input required value={form.name} onChange={(e) => update("name", e.target.value)} className="field" /></Field><Field label="Mobile Number"><input required type="tel" pattern="(?:\+91[ \-]?)?[6-9][0-9]{9}" value={form.phone} onChange={(e) => update("phone", e.target.value)} className="field" /></Field><Field label="Email"><input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)} className="field" /></Field><Field label="Proposed Company Name"><input required value={form.companyName} onChange={(e) => update("companyName", e.target.value)} className="field" /></Field><Field label="Number of Directors"><input required min="2" type="number" value={form.directors} onChange={(e) => update("directors", e.target.value)} className="field" /></Field><Field label="State"><input required value={form.state} onChange={(e) => update("state", e.target.value)} className="field" /></Field><Field label="Business Activity"><input required value={form.activity} onChange={(e) => update("activity", e.target.value)} className="field" /></Field><div className="sm:col-span-2"><button disabled={submitting} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-bold text-white transition hover:bg-navy-dark disabled:opacity-70"><MessageCircle className="h-5 w-5" />{submitting ? "Submitting..." : "Submit Inquiry"}</button></div></form>}
       </DialogContent></Dialog>
     </section>
   );

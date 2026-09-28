@@ -3,7 +3,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { z } from "zod";
 import popupImage from "@/assets/popup_image.jpg";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { submitEnquiry } from "@/lib/enquiry";
+import { enquiryErrorMessage, submitEnquiry } from "@/lib/enquiry";
 
 const leadSchema = z.object({
   name: z.string().trim().min(2, "Please enter your name").max(80),
@@ -30,6 +30,7 @@ export function LeadPopup() {
   const [form, setForm] = useState(initialState);
   const [errors, setErrors] = useState<Partial<Record<keyof LeadState, string>>>({});
   const [status, setStatus] = useState<"idle" | "loading" | "success">("idle");
+  const [submitError, setSubmitError] = useState("");
 
   useEffect(() => {
     if (sessionStorage.getItem(sessionKey)) return;
@@ -50,6 +51,7 @@ export function LeadPopup() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (status === "loading") return;
+    setSubmitError("");
 
     const parsed = leadSchema.safeParse({
       ...form,
@@ -77,9 +79,9 @@ export function LeadPopup() {
       });
       setStatus("success");
       window.setTimeout(() => setOpen(false), 1800);
-    } catch {
+    } catch (error) {
       setStatus("idle");
-      alert("We could not submit your inquiry. Please try again.");
+      setSubmitError(enquiryErrorMessage(error));
     }
   };
 
@@ -159,6 +161,7 @@ export function LeadPopup() {
                   onChange={updateField}
                   placeholder="e.g. Retail, Manufacturing, Services"
                 />
+                {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
                 <button
                   type="submit"
                   disabled={status === "loading"}

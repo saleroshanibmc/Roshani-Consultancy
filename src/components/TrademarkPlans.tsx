@@ -1,9 +1,13 @@
 import { useState } from "react";
 import { Check, Crown, MessageCircle, Search, ShieldCheck, Star, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { submitEnquiry } from "@/lib/enquiry";
+import { enquiryErrorMessage, submitEnquiry } from "@/lib/enquiry";
 
-const plans = [
+const plans: readonly {
+  name: string; price: string; icon: typeof Search; description: string;
+  features: readonly string[]; button: string; badge?: string;
+  featured?: boolean; premium?: boolean;
+}[] = [
   {
     name: "Trademark Search",
     price: "Free",
@@ -59,17 +63,20 @@ export function TrademarkPlans() {
   const [selectedPlan, setSelectedPlan] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [status, setStatus] = useState<"idle" | "loading" | "success">("idle");
+  const [submitError, setSubmitError] = useState("");
 
-  const choosePlan = (plan: string) => { setSelectedPlan(plan); setStatus("idle"); };
+  const choosePlan = (plan: string) => { if (status === "loading") return; setSelectedPlan(plan); setStatus("idle"); setSubmitError(""); };
   const update = (field: keyof FormState, value: string) => setForm((current) => ({ ...current, [field]: value }));
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (status === "loading") return;
+    setSubmitError("");
     setStatus("loading");
     try {
       await submitEnquiry({ name: form.applicantName, phone: form.mobile, email: form.email, organizationName: form.businessName, service: "Trademark", message: `Plan: ${selectedPlan}\nTrademark: ${form.proposedTrademark}\nBusiness activity: ${form.businessActivity}\nType: ${form.trademarkType}`, selectedPlan, proposedTrademark: form.proposedTrademark, businessActivity: form.businessActivity, trademarkType: form.trademarkType, source: "trademark-plans" });
       setStatus("success");
-    } catch { setStatus("idle"); alert("We could not submit your inquiry. Please try again."); }
+    } catch (error) { setStatus("idle"); setSubmitError(enquiryErrorMessage(error)); }
   }
 
   return (
@@ -114,7 +121,7 @@ export function TrademarkPlans() {
         <p className="mt-6 rounded-xl border border-orange/20 bg-orange-soft p-4 text-sm leading-relaxed text-navy-dark"><strong>Note:</strong> Government fees are charged separately as per the applicable applicant category and number of classes. Professional service fees will be shared after reviewing your requirements.</p>
       </div>
 
-      <Dialog open={Boolean(selectedPlan)} onOpenChange={(open) => !open && setSelectedPlan("")}>
+      <Dialog open={Boolean(selectedPlan)} onOpenChange={(open) => !open && status !== "loading" && setSelectedPlan("")}>
         <DialogContent className="max-h-[92vh] w-[calc(100%-1.5rem)] max-w-2xl overflow-y-auto">
           <DialogTitle className="text-2xl font-bold text-navy-dark">Trademark Plan Inquiry</DialogTitle>
           <DialogDescription>Share your details and our trademark expert will contact you.</DialogDescription>
@@ -122,9 +129,10 @@ export function TrademarkPlans() {
             <div className="py-14 text-center"><MessageCircle className="mx-auto h-14 w-14 rounded-full bg-emerald-100 p-3 text-emerald-600" /><h3 className="mt-4 text-xl font-bold text-navy-dark">Inquiry submitted</h3><p className="mt-2 text-sm text-muted-foreground">Thank you. Our trademark expert will contact you shortly.</p><button type="button" onClick={() => { setStatus("idle"); setForm(emptyForm); setSelectedPlan(""); }} className="mt-6 text-sm font-bold text-orange hover:underline">Close</button></div>
           ) : (
             <form onSubmit={handleSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
+              {submitError && <p role="alert" className="text-sm text-destructive sm:col-span-2">{submitError}</p>}
               <FormField label="Selected Plan"><input value={selectedPlan} readOnly className="field bg-muted" /></FormField>
               <FormField label="Applicant Name"><input required value={form.applicantName} onChange={(e) => update("applicantName", e.target.value)} className="field" /></FormField>
-              <FormField label="Mobile Number"><input required type="tel" pattern="(?:\+91[ -]?)?[6-9][0-9]{9}" value={form.mobile} onChange={(e) => update("mobile", e.target.value)} className="field" /></FormField>
+              <FormField label="Mobile Number"><input required type="tel" pattern="(?:\+91[ \-]?)?[6-9][0-9]{9}" value={form.mobile} onChange={(e) => update("mobile", e.target.value)} className="field" /></FormField>
               <FormField label="Email"><input required type="email" value={form.email} onChange={(e) => update("email", e.target.value)} className="field" /></FormField>
               <FormField label="Business Name"><input required value={form.businessName} onChange={(e) => update("businessName", e.target.value)} className="field" /></FormField>
               <FormField label="Proposed Trademark"><input required value={form.proposedTrademark} onChange={(e) => update("proposedTrademark", e.target.value)} className="field" /></FormField>

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { CheckCircle2, Loader2, MessageCircle } from "lucide-react";
 import { serviceWhatsappLink } from "@/data/site";
 import { SERVICES } from "@/data/services";
-import { submitEnquiry } from "@/lib/enquiry";
+import { enquiryErrorMessage, submitEnquiry } from "@/lib/enquiry";
 
 const schema = z.object({
   name: z.string().trim().min(2, "Please enter your full name").max(80),
@@ -23,6 +23,7 @@ export function ContactForm({ defaultService, showIntro = false }: { defaultServ
   const [state, setState] = useState<FormState>({ service: defaultService || "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<Status>("idle");
+  const [submitError, setSubmitError] = useState("");
 
   const set = (key: string, value: string) => {
     setState((current) => ({ ...current, [key]: value }));
@@ -30,11 +31,13 @@ export function ContactForm({ defaultService, showIntro = false }: { defaultServ
     if (status === "success") setStatus("idle");
   };
 
-  const selectedService = state.service || defaultService || "business consultation";
+  const selectedService = state.service || defaultService || "";
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (status === "loading") return;
+    setStatus("idle");
+    setSubmitError("");
 
     const parsed = schema.safeParse({
       name: state.name?.trim() || "",
@@ -60,7 +63,8 @@ export function ContactForm({ defaultService, showIntro = false }: { defaultServ
     try {
       await submitEnquiry(parsed.data);
       setStatus("success");
-    } catch {
+    } catch (error) {
+      setSubmitError(enquiryErrorMessage(error));
       setStatus("error");
     }
   };
@@ -92,7 +96,7 @@ export function ContactForm({ defaultService, showIntro = false }: { defaultServ
           <a href={serviceWhatsappLink(selectedService)} target="_blank" rel="noreferrer" className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full bg-[#25D366] px-4 py-2 text-sm font-semibold text-white"><MessageCircle className="h-4 w-4" /> Continue on WhatsApp</a>
         </div>
       )}
-      {status === "error" && <p className="mt-4 text-sm text-destructive" role="alert">We could not submit your inquiry. Please try again.</p>}
+      {status === "error" && <p className="mt-4 text-sm text-destructive" role="alert">{submitError}</p>}
       <button type="submit" disabled={status === "loading"} className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-navy px-6 py-3 text-sm font-semibold text-white transition hover:bg-navy-dark focus:outline-none focus:ring-2 focus:ring-navy/30 disabled:cursor-not-allowed disabled:opacity-70">
         {status === "loading" && <Loader2 className="h-4 w-4 animate-spin" />}
         {status === "loading" ? "Submitting..." : "Submit Inquiry"}

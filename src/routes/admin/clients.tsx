@@ -55,7 +55,7 @@ async function api(path: string, options: RequestInit = {}) {
   if (!["GET", "HEAD"].includes(options.method || "GET"))
     headers.set("x-csrf-token", decodeURIComponent(cookie("client_admin_csrf")));
   const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
-  const data = await response.json().catch(() => ({ error: "Unexpected server response." }));
+  const data = await response.json().catch(() => { throw new Error("Unexpected server response. Please try again."); });
   if (!response.ok) throw new Error(data.error || "Request failed.");
   return data;
 }
@@ -78,14 +78,18 @@ function AdminClients() {
   const [query, setQuery] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const load = async () => {
+    setError("");
     try {
       const session = await api("/api/admin/session");
       setAuthenticated(session.authenticated);
+      if (!session.authenticated) return;
       const data = await api("/api/admin/clients");
       setClients(data.clients);
-    } catch {
-      setAuthenticated(false);
+    } catch (err) {
+      setAuthenticated((current) => current ?? false);
+      setError(err instanceof Error ? err.message : "Could not load clients.");
     }
   };
   useEffect(() => {
@@ -101,7 +105,10 @@ function AdminClients() {
   );
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (saving) return;
+    setSaving(true);
     setError("");
+    setMessage("");
     try {
       const id = editing.id;
       await api(id ? `/api/admin/clients/${id}` : "/api/admin/clients", {
@@ -114,6 +121,8 @@ function AdminClients() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save client.");
+    } finally {
+      setSaving(false);
     }
   };
   const remove = async (id: string) => {
@@ -334,6 +343,7 @@ function AdminClients() {
               client={editing}
               setClient={setEditing}
               onSubmit={save}
+              saving={saving}
               onCancel={() => setTab("clients")}
               onUploaded={load}
             />
@@ -355,13 +365,19 @@ function AdminClients() {
 function Login({ onSuccess }: { onSuccess: () => Promise<void> }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError("");
     try {
       await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password }) });
       await onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed.");
+    } finally {
+      setPending(false);
     }
   };
   return (
@@ -390,8 +406,8 @@ function Login({ onSuccess }: { onSuccess: () => Promise<void> }) {
             {error}
           </p>
         )}
-        <button className="mt-5 w-full rounded-full bg-orange px-5 py-3 font-semibold text-white">
-          Log in
+        <button disabled={pending} className="mt-5 w-full rounded-full bg-orange px-5 py-3 font-semibold text-white disabled:opacity-70">
+          {pending ? "Logging in..." : "Log in"}
         </button>
       </form>
     </Centered>
@@ -458,12 +474,14 @@ function ClientForm({
   onSubmit,
   onCancel,
   onUploaded,
+  saving,
 }: {
   client: Partial<AdminClient>;
   setClient: (value: Partial<AdminClient>) => void;
   onSubmit: (e: FormEvent) => void;
   onCancel: () => void;
   onUploaded: () => Promise<void>;
+  saving: boolean;
 }) {
   const [service, setService] = useState("");
   const [logo, setLogo] = useState<File | null>(null);
@@ -694,8 +712,8 @@ function ClientForm({
         </div>
       </Panel>
       <div className="flex gap-3">
-        <button className="rounded-full bg-orange px-6 py-3 font-semibold text-white">
-          {client.id ? "Update Client" : "Add Client"}
+        <button disabled={saving} className="rounded-full bg-orange px-6 py-3 font-semibold text-white disabled:opacity-70">
+          {saving ? "Saving..." : client.id ? "Update Client" : "Add Client"}
         </button>
         <button
           type="button"
@@ -811,8 +829,12 @@ function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
   const [mode, setMode] = useState("skip");
   const [report, setReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const preview = async (selected: File) => {
     setError("");
+    setFile(null);
+    setRows([]);
+    setReport(null);
     if (selected.size > 10 * 1024 * 1024) {
       setError("Spreadsheet must be 10 MB or smaller.");
       return;
@@ -837,7 +859,9 @@ function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
     }
   };
   const run = async () => {
-    if (!file) return;
+    if (!file || pending) return;
+    setPending(true);
+    setError("");
     try {
       const result = await api("/api/admin/import", {
         method: "POST",
@@ -847,6 +871,8 @@ function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
       await onImported();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed.");
+    } finally {
+      setPending(false);
     }
   };
   const download = () => {
@@ -875,6 +901,7 @@ function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
         <input
           type="file"
           accept=".xlsx,.xls,.csv"
+          disabled={pending}
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) void preview(f);
@@ -901,6 +928,7 @@ function ImportPanel({ onImported }: { onImported: () => Promise<void> }) {
             </label>
             <button
               onClick={() => void run()}
+              disabled={pending}
               className="rounded-full bg-orange px-5 py-2.5 text-sm font-semibold text-white"
             >
               Import Clients
@@ -974,6 +1002,7 @@ function ServicesPanel() {
   const [services, setServices] = useState<AdminService[]>([]);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const load = async () => {
     try {
       setServices((await api("/api/admin/services")).services);
@@ -986,12 +1015,18 @@ function ServicesPanel() {
   }, []);
   const add = async (e: FormEvent) => {
     e.preventDefault();
+    if (pending) return;
+    setError("");
+    if (!name.trim()) { setError("Please enter a service name."); return; }
+    setPending(true);
     try {
       await api("/api/admin/services", { method: "POST", body: JSON.stringify({ name }) });
       setName("");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not add service.");
+    } finally {
+      setPending(false);
     }
   };
   return (
@@ -1004,7 +1039,7 @@ function ServicesPanel() {
           placeholder="New service name"
           className="h-11 flex-1 rounded-xl border border-border px-3"
         />
-        <button className="rounded-xl bg-navy px-5 font-semibold text-white">Add Service</button>
+        <button disabled={pending} className="rounded-xl bg-navy px-5 font-semibold text-white disabled:opacity-70">{pending ? "Adding..." : "Add Service"}</button>
       </form>
       {error && <ErrorNotice>{error}</ErrorNotice>}
       <div className="mt-5 flex flex-wrap gap-2">
@@ -1023,24 +1058,37 @@ function ServicesPanel() {
 function SettingsPanel() {
   const [showName, setShowName] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
     api("/api/admin/settings")
-      .then((data) => setShowName(data.settings?.show_client_name_publicly === "true"))
-      .catch(() => undefined);
+      .then((data) => { setShowName(data.settings?.show_client_name_publicly === "true"); setLoaded(true); })
+      .catch((err) => setError(err instanceof Error ? err.message : "Could not load settings."));
   }, []);
   const save = async () => {
+    if (pending || !loaded) return;
+    setPending(true);
+    setSaved(false);
+    setError("");
+    try {
     await api("/api/admin/settings", {
       method: "PUT",
       body: JSON.stringify({ showClientNamePublicly: showName }),
     });
     setSaved(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save settings.");
+    } finally {
+      setPending(false);
+    }
   };
   return (
     <Panel title="Client Settings">
       <Toggle
         label="Show client/contact person name publicly"
         checked={showName}
-        onChange={setShowName}
+        onChange={(value) => { if (pending || !loaded) return; setShowName(value); setSaved(false); }}
       />
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
         Privacy protection defaults to OFF. Personal names should only be shown after explicit
@@ -1048,11 +1096,13 @@ function SettingsPanel() {
       </p>
       <button
         onClick={() => void save()}
+        disabled={pending || !loaded}
         className="mt-4 rounded-full bg-navy px-5 py-2.5 text-sm font-semibold text-white"
       >
         Save Settings
       </button>
       {saved && <span className="ml-3 text-sm font-semibold text-green-700">Saved</span>}
+      {error && <ErrorNotice>{error}</ErrorNotice>}
       <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <strong>Logo matching:</strong> Bulk logo filename matching is preview-only. Logos are never
         assigned automatically when a match is uncertain; upload each confirmed logo from Edit
